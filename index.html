@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Stranger LLM UI</title>
+
+  <!-- Fonts (vibe, not official branding) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg: #07070a;
+      --panel: rgba(16,16,20,.86);
+      --panel2: rgba(16,16,20,.62);
+      --ink: #e9e6df;
+      --muted: rgba(233,230,223,.7);
+
+      --blood: #b10f10;
+      --ember: #ff4a2b;
+      --electric: #44b0ff;
+      --acid: #46ff8e;
+      --gold: #ffe66b;
+
+      --wall: #d4b48d;
+      --wall-dirt: rgba(0,0,0,.35);
+
+      --radius: 18px;
+      --shadow: 0 12px 35px rgba(0,0,0,.45);
+      --gridGap: 18px;
+    }
+
+    *{ box-sizing: border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background: radial-gradient(1200px 800px at 70% 20%, rgba(70,255,142,.06), transparent 60%),
+                  radial-gradient(1100px 700px at 20% 70%, rgba(68,176,255,.05), transparent 60%),
+                  linear-gradient(180deg, #050509, #05050a 55%, #040408);
+      color: var(--ink);
+      font-family: "Roboto Mono", monospace;
+      overflow:hidden;
+    }
+    /* Layout */
+    .app{
+      height:100vh;
+      display:grid;
+      grid-template-columns: 1.12fr .88fr;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    @media (max-width: 980px){
+      body{ overflow:auto; }
+      .app{
+        height:auto;
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Left: wall stage */
+    .stage{
+      position:relative;
+      border-radius: var(--radius);
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      background: var(--wall);
+    }
+
+    .stage::before{
+      content:"";
+      position:absolute; inset:0;
+      background-image:
+        radial-gradient(#5a3e26 14%, transparent 15%),
+        radial-gradient(#5a3e26 14%, transparent 15%);
+      background-size: 56px 56px;
+      background-position: 0 0, 28px 28px;
+      opacity:.55;
+      filter: contrast(1.05) saturate(.95);
+      pointer-events:none;
+    }
+
+    .stage::after{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        radial-gradient(900px 520px at 50% 25%, rgba(0,0,0,.0), rgba(0,0,0,.55)),
+        linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.42));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    /* Portal fog */
+    .portal{
+      position:absolute;
+      inset:-40px;
+      background:
+        radial-gradient(closest-side at 55% 45%, rgba(68,176,255,.12), transparent 55%),
+        radial-gradient(closest-side at 45% 55%, rgba(255,74,43,.08), transparent 55%),
+        radial-gradient(closest-side at 60% 70%, rgba(70,255,142,.08), transparent 60%);
+      filter: blur(12px);
+      opacity:.9;
+      z-index:0;
+      animation: breathe 6.5s ease-in-out infinite;
+      pointer-events:none;
+    }
+
+    @keyframes breathe{
+      0%,100%{ transform: scale(1) rotate(0deg); opacity:.85; }
+      50%{ transform: scale(1.02) rotate(.4deg); opacity:.98; }
+    }
+
+    .stageHeader{
+      position:absolute; left:16px; top:16px;
+      z-index:3;
+      display:flex; align-items:flex-end; gap:14px;
+      padding: 12px 14px;
+      background: rgba(0,0,0,.35);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+
+    .title{
+      font-family: "Permanent Marker", cursive;
+      font-size: 28px;
+      line-height:1;
+      letter-spacing: .6px;
+    }
+    .subtitle{
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .statusPill{
+      margin-left:auto;
+      display:flex; align-items:center; gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.08);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .dot{
+      width:8px; height:8px; border-radius:999px;
+      background: rgba(70,255,142,.9);
+      box-shadow: 0 0 12px rgba(70,255,142,.65);
+    }
+
+    /* Alphabet wall */
+    .wallWrap{
+      position:absolute;
+      inset: 0;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      z-index:2;
+      padding: 86px 22px 22px;
+      transition: filter 0.5s ease;
+    }
+
+    .wallWrap.dimmed {
+      filter: brightness(0.5) contrast(1.0);
+    }
+
+    .alphabetGrid{
+      width:min(950px, 100%);
+      display:grid;
+      grid-template-columns: repeat(9, 1fr);
+      gap: var(--gridGap) calc(var(--gridGap) + 20px);
+      padding: 24px;
+      transform: rotate(-.8deg);
+    }
+
+    .letterCell{
+      position:relative;
+      height: 118px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:flex-start;
+      --color: var(--gold);
+      user-select:none;
+    }
+
+    .letterCell:nth-child(4n+1){ --color: var(--ember); }
+    .letterCell:nth-child(4n+2){ --color: var(--electric); }
+    .letterCell:nth-child(4n+3){ --color: var(--acid); }
+    .letterCell:nth-child(4n+4){ --color: var(--gold); }
+
+    .wire{
+      position:absolute;
+      top: 16px;
+      left:-28%;
+      width:156%;
+      height:42px;
+      border-bottom: 3px solid rgba(15,15,18,.9);
+      border-radius: 50%;
+      opacity:.95;
+      filter: drop-shadow(0 2px 1px rgba(0,0,0,.25));
+      pointer-events:none;
+      z-index:0;
+    }
+
+    .bulb{
+      width: 25px;
+      height: 40px;
+      border-radius: 50% 50% 40% 40%;
+      background: rgba(255,255,255,.22);
+      margin-top: 10px;
+      opacity:.42;
+      position:relative;
+      transition: transform .12s ease, opacity .12s ease, box-shadow .12s ease, background .12s ease;
+      z-index:1;
+    }
+    .bulb::before{
+      content:"";
+      position:absolute;
+      top:-6px; left:5px;
+      width:15px; height:10px;
+      background: #141416;
+      border-radius: 2px;
+      opacity:.95;
+    }
+
+    .bulb.active{
+      background: #fff;
+      opacity:1;
+      transform: scale(1.12);
+      box-shadow:
+        0 0 10px var(--color),
+        0 0 20px var(--color),
+        0 0 60px var(--color),
+        0 0 110px rgba(255,255,255,.18);
+    }
+
+    .char{
+      margin-top: 10px;
+      font-family:"Permanent Marker", cursive;
+      font-size: 44px;
+      color: rgba(20,20,22,.92);
+      opacity:.88;
+      text-shadow: 1px 1px 0 rgba(255,255,255,.10);
+    }
+
+    .stageFooter{
+      position:absolute;
+      left:16px; right:16px; bottom:16px;
+      z-index:3;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      padding: 12px 14px;
+      background: rgba(0,0,0,.35);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+    }
+
+    .hint{
+      font-size: 12px;
+      color: var(--muted);
+      line-height:1.2;
+    }
+
+    .btnTiny{
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.35);
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor:pointer;
+      font-family: inherit;
+      font-size: 12px;
+      transition: transform .12s ease, background .12s ease;
+    }
+    .btnTiny:hover{ background: rgba(0,0,0,.45); transform: translateY(-1px); }
+    .btnTiny:active{ transform: translateY(0px); }
+
+    /* Right panel */
+    .console{
+      border-radius: var(--radius);
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      background: linear-gradient(180deg, rgba(20,20,26,.92), rgba(12,12,16,.92));
+      border: 1px solid rgba(255,255,255,.08);
+      display:flex;
+      flex-direction:column;
+      min-height: 620px;
+    }
+
+    .consoleHeader{
+      padding: 14px 14px 12px;
+      background: rgba(0,0,0,.25);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      display:flex;
+      gap:10px;
+      align-items:flex-end;
+      justify-content:space-between;
+    }
+
+    .consoleHeaderLeft .h1{
+      font-family:"Permanent Marker", cursive;
+      font-size: 22px;
+      line-height:1;
+    }
+    .consoleHeaderLeft .h2{
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .controls{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 12px 14px;
+      background: rgba(0,0,0,.15);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+
+    .ctrl{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      padding: 10px 10px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.22);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    .ctrl label{
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    select, input[type="text"], input[type="range"]{
+      width:100%;
+      padding: 10px 10px;
+      border-radius: 12px;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.10);
+      color: var(--ink);
+      outline:none;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .row{
+      display:flex; gap:10px; align-items:center;
+    }
+
+    .small{
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 42px;
+      text-align:right;
+    }
+
+    .chat{
+      flex:1;
+      padding: 14px;
+      overflow:auto;
+      scroll-behavior:smooth;
+      background:
+        radial-gradient(900px 560px at 20% 10%, rgba(255,74,43,.05), transparent 55%),
+        radial-gradient(900px 560px at 80% 50%, rgba(68,176,255,.05), transparent 55%),
+        linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.22));
+    }
+
+    .msg{
+      display:flex;
+      margin: 10px 0;
+      gap: 10px;
+      align-items:flex-end;
+    }
+
+    .msg.user{ justify-content:flex-end; }
+    .msg.assistant{ justify-content:flex-start; }
+
+/* --- index.html <style> içine --- */
+
+/* Mesaj Baloncuğu */
+.bubble {
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.7;
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Cevap İçeriği Formatı */
+.bubble .content {
+    white-space: pre-wrap;
+}
+
+.bubble .content p {
+    margin: 0 0 12px 0;
+}
+
+.bubble .content p:last-child {
+    margin-bottom: 0;
+}
+
+/* Diyalog Vurgusu */
+.bubble .content strong,
+.bubble .content b {
+    color: var(--acid);
+    font-weight: 700;
+}
+
+/* Alıntılar */
+.bubble .content em,
+.bubble .content i {
+    color: var(--gold);
+    font-style: italic;
+}
+
+/* Liste */
+.bubble .content ul,
+.bubble .content ol {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.bubble .content li {
+    margin: 4px 0;
+}
+
+/* Kaynaklar Alanı (Footer) */
+.source-box {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.source-header {
+    font-size: 9px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.source-tag {
+    font-size: 10px;
+    color: var(--electric);
+    background: rgba(0, 0, 0, 0.4);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border-left: 2px solid var(--electric);
+    display: flex;
+    justify-content: space-between;
+}
+
+    .user .bubble{
+      background: rgba(255,74,43,.12);
+      border-color: rgba(255,74,43,.22);
+    }
+    .assistant .bubble{
+      background: rgba(68,176,255,.10);
+      border-color: rgba(68,176,255,.18);
+    }
+
+    .meta{
+      font-size: 10px;
+      color: rgba(233,230,223,.55);
+      margin-bottom: 2px;
+    }
+
+    .composer{
+      padding: 12px 14px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.25);
+      display:flex;
+      gap: 10px;
+      align-items:center;
+    }
+
+    .composer input[type="text"]{
+      font-size: 13px;
+      padding: 12px 12px;
+    }
+
+    .send{
+      cursor:pointer;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(177,15,16,.85);
+      color: var(--ink);
+      padding: 12px 14px;
+      font-family: "Permanent Marker", cursive;
+      letter-spacing: .6px;
+      transition: transform .12s ease, filter .12s ease;
+      user-select:none;
+      white-space:nowrap;
+    }
+    .send:hover{ filter: brightness(1.08); transform: translateY(-1px); }
+    .send:active{ transform: translateY(0px); }
+    .send:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+      transform:none;
+    }
+
+    .kbd{
+      font-size: 10px;
+      color: rgba(233,230,223,.55);
+      padding: 6px 8px;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 10px;
+      background: rgba(0,0,0,.25);
+      user-select:none;
+    }
+
+    /* Tiny scrollbar */
+    .chat::-webkit-scrollbar{ width: 10px; }
+    .chat::-webkit-scrollbar-thumb{
+      background: rgba(255,255,255,.10);
+      border-radius: 999px;
+      border: 2px solid rgba(0,0,0,.35);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- LEFT: WALL -->
+    <section class="stage" aria-label="Light Wall">
+      <div class="portal"></div>
+
+      <div class="stageHeader">
+        <div>
+          <div class="title">Stranger LLM</div>
+          <div class="subtitle">Duvar üzerinden konuşan bir dil modeli arayüzü</div>
+        </div>
+        <div class="statusPill" id="statusPill">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText">READY</span>
+        </div>
+      </div>
+
+      <div class="wallWrap" id="wallWrap">
+        <div class="alphabetGrid" id="alphabetGrid"></div>
+      </div>
+
+      <div class="stageFooter">
+        <div class="hint" id="wallHint">
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+          <button class="btnTiny" id="btnDemo">DEMO: OFF</button>
+          <button class="btnTiny" id="btnPanic">PANIC FLASH</button>
+          <button class="btnTiny" id="btnClear">CLEAR</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: CONSOLE -->
+    <section class="console" aria-label="LLM Console">
+      <div class="consoleHeader">
+        <div class="consoleHeaderLeft">
+          <div class="h1">Console</div>
+          <div class="h2">Model ayarları, mesajlar ve “portal üzerinden” yanıtlar</div>
+        </div>
+        <div class="kbd">Enter = Gönder</div>
+      </div>
+
+      <div class="controls">
+        <div class="ctrl">
+          <label>Endpoint (opsiyonel)</label>
+          <input id="endpoint" type="text" value="http://127.0.0.1:8000\ask" placeholder="Örn: http://localhost:3000/api/chat" />
+          <div style="font-size:10px;color:rgba(233,230,223,.55)">
+            Demo ON iken endpoint kullanılmaz.
+          </div>
+        </div>
+
+        <div class="ctrl">
+          <label>🎬 Dizi Seçimi</label>
+          <select id="seriesSelect">
+            <option value="all">🌟 Hepsi (Tüm Diziler)</option>
+            <option value="stranger_things">Stranger Things</option>
+            <option value="breaking_bad">Breaking Bad</option>
+          </select>
+          <div style="font-size:10px;color:rgba(233,230,223,.55)">
+            Hangi diziden soru soracaksın? (Hepsi = Tüm dizilerden ara)
+          </div>
+        </div>
+
+        <div class="ctrl">
+          <label>🤖 LLM Motoru</label>
+          <select id="llmSelect">
+            <option value="gemini">Google Gemini</option>
+            <option value="local">Local Ollama</option>
+          </select>
+          <div style="font-size:10px;color:rgba(233,230,223,.55)">
+            Local = Ollama, Gemini = Google API
+          </div>
+        </div> 
+      </div>
+
+      <div class="chat" id="chat"></div>
+
+      <div class="composer">
+        <input id="prompt" type="text" placeholder="Mesaj yaz... (örn: 'Burada mısın?')" />
+        <button class="send" id="sendBtn">GÖNDER</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ----------------------------
+    //  Stranger LLM UI (single-file)
+    // ----------------------------
+
+    // Wall setup
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const grid = document.getElementById("alphabetGrid");
+    const letterMap = {}; // char -> bulb element
+
+    // Build wall
+    alphabet.split("").forEach((ch, i) => {
+      const cell = document.createElement("div");
+      cell.className = "letterCell";
+      const offset = Math.floor(Math.random()*18) - 9;
+      cell.style.transform = `translateY(${offset}px)`;
+
+      if (i < alphabet.length - 1) {
+        const wire = document.createElement("div");
+        wire.className = "wire";
+        wire.style.transform = `rotate(${(Math.random()*10-5).toFixed(2)}deg)`;
+        cell.appendChild(wire);
+      }
+
+      const bulb = document.createElement("div");
+      bulb.className = "bulb";
+
+      const char = document.createElement("div");
+      char.className = "char";
+      char.textContent = ch;
+
+      cell.appendChild(bulb);
+      cell.appendChild(char);
+      grid.appendChild(cell);
+
+      letterMap[ch] = bulb;
+    });
+
+    // UI elements
+    const chat = document.getElementById("chat");
+    const promptEl = document.getElementById("prompt");
+    const sendBtn = document.getElementById("sendBtn");
+    const endpointEl = document.getElementById("endpoint");
+    const seriesSelect = document.getElementById("seriesSelect");
+    const llmSelect = document.getElementById("llmSelect");
+
+    const statusText = document.getElementById("statusText");
+    const statusDot = document.getElementById("statusDot");
+
+    const btnDemo = document.getElementById("btnDemo");
+    const btnPanic = document.getElementById("btnPanic");
+    const btnClear = document.getElementById("btnClear");
+    const wallWrap = document.getElementById("wallWrap");
+
+    // State
+    let demoMode = false;
+    let queue = [];
+    let playing = false;
+
+// --- BURAYI EKLE (State tanımlarının altına) ---
+    let thinkingInterval;
+
+
+    function startThinkingPanic() {
+      // 1. Duvarı Karart
+      wallWrap.classList.add('dimmed');
+      setStatus("busy", "UPSIDE DOWN...");
+
+      if (thinkingInterval) return;
+      
+      // 2. Işıkları Çıldırt (Panic Mode)
+      thinkingInterval = setInterval(() => {
+        const keys = Object.keys(letterMap);
+        const ch = keys[Math.floor(Math.random() * keys.length)];
+        const bulb = letterMap[ch];
+        if(bulb) {
+            bulb.classList.add("active");
+            // Çok kısa sürede söndür (flaş etkisi)
+            setTimeout(() => bulb.classList.remove("active"), 80);
+        }
+      }, 100); // Çok hızlı tekrar et
+    }
+
+    function stopThinkingPanic() {
+      // 1. Duvarı Normale Döndür
+      wallWrap.classList.remove('dimmed');
+      
+      // 2. Işıkları Durdur ve Temizle
+      clearInterval(thinkingInterval);
+      thinkingInterval = null;
+      document.querySelectorAll('.bulb').forEach(b => b.classList.remove('active'));
+    }
+    // ----------------------------------------------
+
+
+
+    // Helpers
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    function setStatus(mode, text){
+      statusText.textContent = text;
+      if (mode === "ready"){
+        statusDot.style.background = "rgba(70,255,142,.9)";
+        statusDot.style.boxShadow = "0 0 12px rgba(70,255,142,.65)";
+      } else if (mode === "busy"){
+        statusDot.style.background = "rgba(255,230,107,.95)";
+        statusDot.style.boxShadow = "0 0 12px rgba(255,230,107,.65)";
+      } else if (mode === "error"){
+        statusDot.style.background = "rgba(255,74,43,.95)";
+        statusDot.style.boxShadow = "0 0 12px rgba(255,74,43,.65)";
+      }
+    }
+
+    function addMessage(role, text){
+      const wrap = document.createElement("div");
+      wrap.className = `msg ${role}`;
+
+      const bubbleWrap = document.createElement("div");
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = role === "user" ? "YOU" : "STRANGER-LLM";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+
+      bubbleWrap.appendChild(meta);
+      bubbleWrap.appendChild(bubble);
+      wrap.appendChild(bubbleWrap);
+      chat.appendChild(wrap);
+
+      chat.scrollTop = chat.scrollHeight;
+      return bubble;
+    }
+
+    // Light playback
+    function enqueueLights(text){
+      for (const ch of text.toUpperCase()) queue.push(ch);
+      playQueue();
+    }
+
+    async function playQueue(){
+      if (playing || queue.length === 0) return;
+      playing = true;
+
+      const style = "calm";
+      const onMs   = 150; 
+      const gapMs  = 50;
+      const spaceMs= 200;
+
+      while(queue.length){
+        const ch = queue.shift();
+
+        if (ch === " ") { await sleep(spaceMs); continue; }
+        const bulb = letterMap[ch];
+        if (!bulb) { await sleep(55); continue; }
+
+        bulb.classList.add("active");
+        await sleep(onMs);
+        bulb.classList.remove("active");
+        await sleep(gapMs);
+      }
+      playing = false;
+    }
+
+    // Typewriter into existing bubble
+    async function typeInto(bubble, text){
+      bubble.textContent = "";
+      for (let i=0; i<text.length; i++){
+        bubble.textContent += text[i];
+        if (i % 2 === 0) chat.scrollTop = chat.scrollHeight;
+        await sleep(12 + Math.random()*18);
+      }
+    }
+
+    // Demo LLM (local)
+    function demoLLM(userText){
+      const t = userText.trim().toUpperCase();
+
+      const mood = "calm";
+      const picks = {
+        calm: [
+          "SİNYAL NET. KAPININ ÖTE TARAFI SESSİZ. NE SORMUŞTUN?",
+          "BURADAYIM. KELİMELERİN, DUVARDA İZ BIRAKIYOR.",
+          "YAVAŞ YAZ. IŞIKLAR HER ŞEYİ DUYUYOR."
+        ],
+        cryptic: [
+          "GÖLGELERİN GRAMERİ VAR. CÜMLENİ KISALT.",
+          "KAPI ARALANDI. AMA ADINI SÖYLEME.",
+          "SESLER SUDAN GEÇER. HARFLERİ KURU TUT."
+        ],
+        urgent: [
+          "ÇABUK. IŞIKLAR DÜŞÜYOR. NE İSTİYORSUN?",
+          "ŞİMDİ KONUŞ. SONRA SESSİZLİK GELECEK.",
+          "KAPI AÇIK. KOŞ. AMA DÖNME."
+        ]
+      };
+
+      if (t.includes("NABER") || t.includes("NASIL")) {
+        return mood === "urgent"
+          ? "ZAMAN YOK. SORUNU SÖYLE."
+          : "BURADAYIM. DUVARIN ARKASINDA BİR CEVAP VAR.";
+      }
+
+      if (t.includes("KİMSİN") || t.includes("SEN KİMSİN")) {
+        return "BEN BİR SİNYALİM. KELİMELERİNİN GÖLGESİ.";
+      }
+
+      if (t.includes("YARDIM") || t.includes("HELP")) {
+        return "TAMAM. 1) KORKMA 2) SORUNU 1 CÜMLEDE YAZ 3) BİR ÖRNEK VER.";
+      }
+
+      const pool = picks[mood] || picks.calm;
+      const base = pool[Math.floor(Math.random()*pool.length)];
+
+      // küçük “kişiselleştirme”
+      if (t.length > 0) {
+        const last = t.replace(/[^A-ZÇĞİÖŞÜ ]/g,"").split(" ").filter(Boolean).slice(-1)[0] || "SİNYAL";
+        return base + " | ANAHTAR: " + last;
+      }
+      return base;
+    }
+
+    // Real endpoint call (simple JSON)
+    // Expected request:
+    // POST endpoint
+    // { "model": "...", "temperature": 0.8, "messages": [{role:"user", content:"..."}] }
+    // Expected response:
+    // { "reply": "..." }  OR  { "content": "..." }
+    async function callEndpoint(userText){
+      const url = endpointEl.value.trim();
+      if (!url) throw new Error("Endpoint boş. Demo modunu aç veya endpoint gir.");
+
+      // Payload with series and LLM selection
+      const payload = {
+        query: userText,
+        series: seriesSelect.value,
+        use_local: llmSelect.value === "local"
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok){
+        const txt = await res.text().catch(()=> "");
+        throw new Error(`HTTP ${res.status} ${res.statusText}${txt ? " | " + txt : ""}`);
+      }
+
+      const data = await res.json();
+      return data.reply || data.content || data.message || JSON.stringify(data);
+    }
+
+    // Send flow
+    // --- BU İKİ FONKSİYONU ESKİLERİYLE DEĞİŞTİR ---
+
+    async function handleSend(){
+      const text = promptEl.value.trim();
+      if (!text) return;
+
+      promptEl.value = "";
+      sendBtn.disabled = true;
+
+      // Kullanıcı mesajı
+      addMessage("user", text);
+      const assistantBubble = addMessage("assistant", "…");
+
+      // 1. PANİK MODU BAŞLAT (Düşünürken)
+      startThinkingPanic(); 
+
+      try {
+        let replyText = "";
+        let sources = [];
+        
+        if (demoMode) {
+          await sleep(1500);
+          replyText = demoLLM(text);
+        } else {
+          // API Çağrısı
+          const rawResponse = await callEndpoint(text);
+          
+          // Gelen veri String ise JSON'a çevir, zaten Obje ise direkt kullan
+          // (2. resimdeki sorunu çözen satır burası)
+          const data = typeof rawResponse === "string" ? JSON.parse(rawResponse) : rawResponse;
+          
+          replyText = data.answer; 
+          sources = data.sources;
+        }
+
+        // 2. PANİK MODU BİTİR (Cevap Geldi)
+        stopThinkingPanic();
+
+        setStatus("busy", "TRANSMITTING");
+        
+        // Metni ve Kaynakları Yazdır
+        await typeWriter(assistantBubble, replyText, sources);
+
+        setStatus("ready", "READY");
+
+      } catch (err) {
+        stopThinkingPanic();
+        setStatus("error", "ERROR");
+        assistantBubble.textContent = "HATA: " + (err?.message || String(err));
+      } finally {
+        sendBtn.disabled = false;
+        promptEl.focus();
+      }
+    }
+
+    async function typeWriter(bubbleElement, text, sources){
+      bubbleElement.innerHTML = ""; // Önce temizle (üç noktayı sil)
+      
+      // İçerik container'ı
+      const contentDiv = document.createElement("div");
+      contentDiv.className = "content";
+      bubbleElement.appendChild(contentDiv);
+
+      // Metni paragraf paragraf formatla
+      const formattedText = formatAnswer(text);
+      
+      // HTML'i direkt ekle (daktilo yapmadan, çünkü HTML etiketlerini bozuyor)
+      contentDiv.innerHTML = formattedText;
+      
+      // Yumuşak görünüm efekti
+      contentDiv.style.opacity = "0";
+      contentDiv.style.transition = "opacity 0.3s ease";
+      setTimeout(() => {
+        contentDiv.style.opacity = "1";
+      }, 50);
+      
+      chat.scrollTop = chat.scrollHeight;
+
+      // Kaynakları Ekle (Varsa)
+      if(sources && sources.length > 0) {
+          const sourceBox = document.createElement("div");
+          sourceBox.className = "source-box";
+          
+          // Başlık
+          const header = document.createElement("div");
+          header.className = "source-header";
+          header.innerText = "/// REFERANS LOGLARI ///";
+          sourceBox.appendChild(header);
+
+          // Etiketler
+          sources.forEach(src => {
+              const tag = document.createElement("div");
+              tag.className = "source-tag";
+              
+              // Format: S1 E3 | episode_name | 00:08:21
+              let displayText = "";
+              if (src.season && src.episode_num) {
+                displayText = `S${src.season} E${src.episode_num}`;
+              } else if (src.episode) {
+                displayText = src.episode;
+              }
+              
+              // Add series name if available (for multi-series queries)
+              if (src.series) {
+                displayText = `[${src.series}] ${displayText}`;
+              }
+              
+              tag.innerHTML = `<span>📂 ${displayText}</span> <span style="opacity:0.7">${src.time}</span>`;
+              sourceBox.appendChild(tag);
+          });
+
+          // Efektli giriş
+          sourceBox.style.opacity = "0";
+          sourceBox.style.transition = "opacity 0.5s";
+          bubbleElement.appendChild(sourceBox);
+          
+          setTimeout(() => { 
+              sourceBox.style.opacity = "1"; 
+              chat.scrollTop = chat.scrollHeight; 
+          }, 100);
+      }
+    }
+
+    // Cevabı düzenli formata çevir
+    function formatAnswer(text) {
+      // Önce markdown formatını HTML'e çevir
+      let formatted = text;
+      
+      // Markdown bold: **text** → <strong>text</strong>
+      formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      
+      // Markdown italic: *text* → <em>text</em> (bold'dan sonra, çünkü ** önce işlenmeli)
+      formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      
+      // Çift tire ayraç → placeholder (en son HTML'e çevireceğiz)
+      formatted = formatted.replace(/^---+$/gm, '[[DIVIDER]]');
+      
+      // Diyalogları vurgula: "Metin:" veya "Metin şöyle der:" (paragraf öncesi)
+      formatted = formatted.replace(/([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)*(?:'in|'nin|'ın|'un)?\s+(?:şöyle der|der|sorar|söyler|cevaplar|bağırır|fısıldar):?\s*"[^"]+")/g, '<span style="color: var(--acid);">$1</span>');
+      
+      // Tırnak içi metinleri vurgula - sadece metin içeriklerinde, HTML tag içinde değil
+      formatted = formatted.replace(/"([^"<>]+)"/g, '<em>"$1"</em>');
+      
+      // Çift boşlukları paragraflara çevir
+      formatted = formatted
+        .split('\n\n')
+        .map(para => para.trim())
+        .filter(para => para.length > 0)
+        .map(para => {
+          // Divider placeholder
+          if (para === '[[DIVIDER]]') {
+            return '[[DIVIDER]]'; // Henüz dönüştürme
+          }
+          
+          // Liste öğeleri: satırlar "- " ile başlıyorsa
+          const lines = para.split('\n');
+          const isListItems = lines.every(line => line.trim().startsWith('- ') || line.trim() === '');
+          
+          if (isListItems && lines.length > 1) {
+            const listItems = lines
+              .filter(line => line.trim().startsWith('- '))
+              .map(line => `<li>${line.trim().substring(2)}</li>`)
+              .join('');
+            return `<ul>${listItems}</ul>`;
+          }
+          
+          // Eğer zaten HTML tag varsa olduğu gibi bırak
+          if (para.startsWith('<')) return para;
+          
+          return `<p>${para}</p>`;
+        })
+        .join('');
+      
+      // Eğer hiç paragraf yoksa tek paragraf yap
+      if (!formatted.includes('<p>') && !formatted.includes('<ul>')) {
+        formatted = `<p>${formatted}</p>`;
+      }
+      
+      // En son HR placeholder'ları değiştir (tırnak işlemlerinden sonra)
+      formatted = formatted.replace(/\[\[DIVIDER\]\]/g, '<hr style="border: none; border-top: 1px dashed rgba(255,255,255,0.2); margin: 10px 0;">');
+      
+      return formatted;
+    }
+
+    // Events
+    sendBtn.addEventListener("click", handleSend);
+    promptEl.addEventListener("keydown", (e)=> {
+      if (e.key === "Enter") handleSend();
+    });
+
+    btnDemo.addEventListener("click", () => {
+      demoMode = !demoMode;
+      btnDemo.textContent = demoMode ? "DEMO: ON" : "DEMO: OFF";
+      btnDemo.style.borderColor = demoMode ? "rgba(70,255,142,.25)" : "rgba(255,230,107,.25)";
+      btnDemo.style.background = demoMode ? "rgba(0,0,0,.35)" : "rgba(0,0,0,.45)";
+      setStatus("ready", demoMode ? "READY" : "READY (ENDPOINT)");
+      addMessage("assistant", demoMode ? "DEMO MODU AÇILDI. CEVAPLAR YEREL ÜRETİLECEK." : "DEMO KAPANDI. ENDPOINT ÜZERİNDEN KONUŞACAĞIM.");
+    });
+
+    btnPanic.addEventListener("click", async () => {
+      // kısa “panic flash”: rastgele harfleri çok hızlı yak
+      setStatus("busy", "PANIC");
+      const keys = alphabet.split("");
+      for (let i=0; i<38; i++){
+        const ch = keys[Math.floor(Math.random()*keys.length)];
+        const b = letterMap[ch];
+        b.classList.add("active");
+        await sleep(60);
+        b.classList.remove("active");
+        await sleep(25);
+      }
+      setStatus("ready", "READY");
+    });
+
+    btnClear.addEventListener("click", () => {
+      chat.innerHTML = "";
+      queue = [];
+      setStatus("ready", "READY");
+      addMessage("assistant", "TEMİZLENDİ. YENİ BİR SİNYAL BEKLİYORUM.");
+      promptEl.focus();
+    });
+
+    // Boot
+    tempVal.textContent = Number(tempEl.value).toFixed(2);
+    setStatus("ready", "READY");
+    addMessage("assistant", "SİSTEM HAZIR. BİR MESAJ YAZ, DUVAR CEVAP VERECEK.");
+    promptEl.focus();
+  </script>
+</body>
+</html>
